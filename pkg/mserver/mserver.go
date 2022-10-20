@@ -52,6 +52,7 @@ func handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 		if len(r.Question) > 0 {
 
 			// First check the cache
+			go recordQuery(r)
 			res, found := c.Get(r.Question[0].String())
 			if found {
 
@@ -119,4 +120,13 @@ func pushToRedis(r *dns.Msg, answer *dns.Msg) {
 		}
 	}
 
+}
+
+func recordQuery(r *dns.Msg) {
+	name := r.Question[0].Name
+	qtype := r.Question[0].Qtype
+	now := time.Now()
+	value := now.Unix()
+	entry := fmt.Sprintf("%s:%d:%d", name, qtype, value)
+	redisdb.RPush(ctx, "cdns:queries", entry)
 }
