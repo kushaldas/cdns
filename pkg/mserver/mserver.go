@@ -12,6 +12,7 @@ import (
 
 var serverurl string
 var c *cache.Cache
+var question *cache.Cache
 
 func Listen(port int, serveraddr string) {
 	serverurl = serveraddr
@@ -20,6 +21,7 @@ func Listen(port int, serveraddr string) {
 		handleRequest(w, req)
 	})
 	c = cache.New(5*time.Minute, 10*time.Minute)
+	question = cache.New(2*time.Second, 2*time.Minute)
 
 	server := &dns.Server{Addr: fmt.Sprintf("127.0.0.1:%d", port), Net: "udp", Handler: serveMux}
 	err := server.ListenAndServe()
@@ -47,12 +49,22 @@ func handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 				w.WriteMsg(m)
 				return
 			}
-			d := net.Dialer{Timeout: 3 * time.Second}
+			d := net.Dialer{Timeout: 500 * time.Millisecond}
 			conn, err := d.Dial("udp", serverurl)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 				return
 			}
+			// Check if we already asked and waiting for an Answer
+			res, found = question.Get(r.Question[0].String())
+			if found {
+				// Then don't ask again, fail happily
+				// TODO: I don't know how bad is this idea :)
+				w.WriteMsg(m)
+				return
+			}
+			// Now we record that we asked this question
+			question.Set(r.Question[0].String(), true, cache.DefaultExpiration)
 			fmt.Printf("%+v\n", r.Question)
 			defer conn.Close()
 			dnsConn := &dns.Conn{Conn: conn}
@@ -63,6 +75,8 @@ func handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 			}
 			resp, err := dnsConn.ReadMsg()
 			if err == nil {
+				// First delete from the question
+				question.Delete(r.Question[0].String())
 				m.Answer = append(m.Answer, resp.Answer...)
 				m.Ns = append(m.Ns, resp.Ns...)
 				m.Extra = append(m.Extra, resp.Extra...)
