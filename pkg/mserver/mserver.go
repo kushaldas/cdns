@@ -130,6 +130,7 @@ func handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 				fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 				return
 			}
+			defer conn.Close()
 			// Check if we already asked and waiting for an Answer
 			res, found = question.Get(r.Question[0].String())
 			if found {
@@ -141,7 +142,6 @@ func handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 			// Now we record that we asked this question
 			question.Set(r.Question[0].String(), true, cache.DefaultExpiration)
 			//fmt.Printf("%+v\n", r.Question)
-			defer conn.Close()
 			dnsConn := &dns.Conn{Conn: conn}
 			if err = dnsConn.WriteMsg(r); err != nil {
 				w.WriteMsg(m)
