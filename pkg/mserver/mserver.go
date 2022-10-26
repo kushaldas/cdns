@@ -47,7 +47,8 @@ func watchDNSConfiguration(watcher fsnotify.Watcher) {
 						file.WriteString(resolvconf)
 					}
 				} else {
-					log.Fatal(err)
+					fmt.Println("We could not read /etc/resolv.conf")
+					log.Println(err)
 				}
 
 			}
@@ -89,6 +90,7 @@ nameserver 127.0.0.1
 
 	// Now for redis
 	ctx = context.Background()
+	// TODO: Get this from configuration file
 	redisdb = redis.NewClient(&redis.Options{
 		Addr:     "localhost:6379",
 		Password: "", // no password set
