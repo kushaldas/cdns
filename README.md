@@ -1,6 +1,8 @@
 A stupid DNS forwarder, by default it forwards the queries to the systemd-resolved.
 
-In future it will log the details in a local redis instance.
+It currently logs things into local redis.
+
+You can use [just](https://just.systems/man/en/) to build the project.
 
 ## How to build?
 
