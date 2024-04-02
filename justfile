@@ -11,7 +11,6 @@ build:
 install:
   sudo systemctl stop cdns
   sudo cp ./cdns /usr/sbin/
-  sudo systemctl start cdns
 
 run:
   sudo ./cdns --port 8000
