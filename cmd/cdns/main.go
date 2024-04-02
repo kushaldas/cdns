@@ -13,5 +13,5 @@ func main() {
 
 	flag.Parse()
 
-	mserver.Listen(*port, "127.0.0.53:53")
+	mserver.Listen(*port, *remote)
 }
