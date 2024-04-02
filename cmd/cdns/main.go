@@ -7,6 +7,8 @@ import (
 
 var port *int = flag.Int("port", 53, "The port to run on.")
 
+var remote *string = flag.String("remote", "1.1.1.1:53", "The remote DNS IP:PORT to be used.")
+
 func main() {
 
 	flag.Parse()

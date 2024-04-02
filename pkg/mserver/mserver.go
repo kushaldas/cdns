@@ -92,12 +92,12 @@ nameserver 127.0.0.1
 	ctx = context.Background()
 	// TODO: Get this from configuration file
 	redisdb = redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
+		Addr:     "127.0.0.1:6379",
 		Password: "", // no password set
 		DB:       0,  // use default DB
 	})
 
-	server := &dns.Server{Addr: fmt.Sprintf("127.0.0.1:%d", port), Net: "udp", Handler: serveMux}
+	server := &dns.Server{Addr: fmt.Sprintf("0.0.0.0:%d", port), Net: "udp", Handler: serveMux}
 	err = server.ListenAndServe()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error while starting the server: %s\n", err)
