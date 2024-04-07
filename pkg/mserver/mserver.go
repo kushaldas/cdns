@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -30,16 +31,32 @@ var blocklist map[string]bool
 // We will read and fill up our blocklist
 func fillBlockList() {
 	blocklist = make(map[string]bool)
-	data, err := os.ReadFile("clean-easylist.txt")
-	if err == nil {
-		lines := strings.Split(string(data), "\n")
-		for _, line := range lines {
-			if len(line) > 0 {
-				blocklist[line+"."] = true
-			}
+	var filenames []string
+	// Find all the files in the blocklists directory
+	filepath.Walk("blocklists", func(path string, info os.FileInfo, err error) error {
+
+		// Need files ready for simple loading to our tool
+		if !info.IsDir() && strings.Contains(path, "clean-") && strings.HasSuffix(path, ".txt") {
+
+			filenames = append(filenames, path)
 		}
-	} else {
-		fmt.Println("Error reading blocklist")
+		return nil
+	})
+
+	for _, filename := range filenames {
+		data, err := os.ReadFile(filename)
+		if err == nil {
+			lines := strings.Split(string(data), "\n")
+			for _, line := range lines {
+				if len(line) > 0 {
+					blocklist[line+"."] = true
+				}
+			}
+			fmt.Println("Loaded:", filename)
+		} else {
+			fmt.Println("Error reading blocklist")
+		}
+
 	}
 }
 
