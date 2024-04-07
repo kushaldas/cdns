@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"context"
@@ -23,6 +24,24 @@ var ctx context.Context
 
 var resolvconf string
 
+// For blocklist
+var blocklist map[string]bool
+
+// We will read and fill up our blocklist
+func fillBlockList() {
+	blocklist = make(map[string]bool)
+	data, err := os.ReadFile("clean-easylist.txt")
+	if err == nil {
+		lines := strings.Split(string(data), "\n")
+		for _, line := range lines {
+			if len(line) > 0 {
+				blocklist[line+"."] = true
+			}
+		}
+	} else {
+		fmt.Println("Error reading blocklist")
+	}
+}
 
 // This function monitors the /etc/resolv.conf for any change
 func watchDNSConfiguration(watcher fsnotify.Watcher) {
@@ -80,6 +99,9 @@ nameserver 127.0.0.1
 	go watchDNSConfiguration(*watcher)
 	// End of monitoring code
 
+	// Let us read all the blocklists
+	fillBlockList()
+
 	serverurl = serveraddr
 	serveMux := dns.NewServeMux()
 	serveMux.HandleFunc(".", func(w dns.ResponseWriter, req *dns.Msg) {
@@ -112,27 +134,38 @@ func handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 	if r.MsgHdr.Opcode == dns.OpcodeQuery {
 		if len(r.Question) > 0 {
 
-			// First check the cache
+			// Record the query
 			go recordQuery(r)
-			res, found := c.Get(r.Question[0].String())
-			if found {
 
-				//fmt.Printf("From cache: %+v\n", r.Question)
-				m.Answer = append(m.Answer, res.(dns.Msg).Answer...)
-				m.Ns = append(m.Ns, res.(dns.Msg).Ns...)
-				m.Extra = append(m.Extra, res.(dns.Msg).Extra...)
-				w.WriteMsg(m)
-				return
-			}
-			// Check if we already asked and waiting for an Answer
-			res, found = question.Get(r.Question[0].String())
-			if found {
-				// Then don't ask again, fail happily
-				// TODO: I don't know how bad is this idea :)
-				w.WriteMsg(m)
-				return
+			// Check if blocklisted domain
+			blocked := blocklist[r.Question[0].Name]
+
+			if !blocked {
+
+				// First check the cache
+				res, found := c.Get(r.Question[0].String())
+				if found {
+
+					//fmt.Printf("From cache: %+v\n", r.Question)
+					m.Answer = append(m.Answer, res.(dns.Msg).Answer...)
+					m.Ns = append(m.Ns, res.(dns.Msg).Ns...)
+					m.Extra = append(m.Extra, res.(dns.Msg).Extra...)
+					w.WriteMsg(m)
+					return
+				}
+				// Check if we already asked and waiting for an Answer
+				_, found = question.Get(r.Question[0].String())
+				if found {
+					// Then don't ask again, fail happily
+					// TODO: I don't know how bad is this idea :)
+					// Set NXDOMAIN
+					m.SetRcode(r, dns.RcodeNameError)
+					w.WriteMsg(m)
+					return
+				}
 			}
 
+			// Now do a real query
 			d := net.Dialer{Timeout: 500 * time.Millisecond}
 			conn, err := d.Dial("udp", serverurl)
 			if err != nil {
@@ -145,6 +178,8 @@ func handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 			//fmt.Printf("%+v\n", r.Question)
 			dnsConn := &dns.Conn{Conn: conn}
 			if err = dnsConn.WriteMsg(r); err != nil {
+				// Set NXDOMAIN
+				m.SetRcode(r, dns.RcodeNameError)
 				w.WriteMsg(m)
 				fmt.Fprintf(os.Stderr, "Error while talking to the server %s\n", err)
 				return
@@ -153,9 +188,17 @@ func handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 			if err == nil {
 				// First delete from the question
 				question.Delete(r.Question[0].String())
-				m.Answer = append(m.Answer, resp.Answer...)
-				m.Ns = append(m.Ns, resp.Ns...)
-				m.Extra = append(m.Extra, resp.Extra...)
+				// Now if the domain is not blocked then return real answer
+				if !blocked {
+					m.Answer = append(m.Answer, resp.Answer...)
+					m.Ns = append(m.Ns, resp.Ns...)
+					m.Extra = append(m.Extra, resp.Extra...)
+				} else {
+					// Means blocked domain, so return NXDOMAIN
+					m.SetRcode(r, dns.RcodeNameError)
+				}
+
+				// We need to record the real IP address anyway
 				if len(resp.Answer) > 0 {
 					//fmt.Printf("TTL: %+v\n", resp.Answer[0].Header().Ttl)
 					c.Set(r.Question[0].String(), *resp, cache.DefaultExpiration)
